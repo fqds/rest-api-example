@@ -2,11 +2,16 @@ package apiserver
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/fqds/rest-api-example/internal/app/model"
 	"github.com/fqds/rest-api-example/internal/app/store"
 	"github.com/gorilla/mux"
+)
+
+var (
+	errIncorrectImailOrPassword = errors.New("incorrect email or password")
 )
 
 type server struct {
@@ -31,6 +36,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) configureRouter() {
 	s.router.HandleFunc("/users", s.handleUsersCreate())
+	s.router.HandleFunc("/sessions", s.handleSessionCreate())
 }
 
 func (s *server) handleUsersCreate() http.HandlerFunc {
@@ -57,6 +63,29 @@ func (s *server) handleUsersCreate() http.HandlerFunc {
 
 		u.Sanitize()
 		s.respond(w, r, http.StatusCreated, u)
+	}
+}
+
+func (s *server) handleSessionCreate() http.HandlerFunc {
+	type request struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		u, err := s.store.User().FindByEmail(req.Email)
+		if err != nil || !u.ComparePassword(req.Password) {
+			s.error(w, r, http.StatusUnauthorized, errIncorrectImailOrPassword)
+			return
+		}
+
+		s.respond(w, r, http.StatusOK, nil)
 	}
 }
 
